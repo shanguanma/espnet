@@ -85,14 +85,10 @@ else:
             device (int | torch.device): Device.
             reverse (bool): If True, input and output length are reversed.
             ikey (str): Key to access input
-                (for ASR/ST ikey="input", for MT ikey="output".)
-            iaxis (int): Dimension to access input
-                (for ASR/ST iaxis=0, for MT iaxis=1.)
-            okey (str): Key to access output
-                (for ASR/ST okey="input", MT okay="output".)
-            oaxis (int): Dimension to access output
-                (for ASR/ST oaxis=0, for MT oaxis=0.)
-            subsampling_factor (int): subsampling factor in encoder
+                (for ASR ikey="input", for MT ikey="output".)
+            iaxis (int): Dimension to access input (for ASR iaxis=0, for MT iaxis=1.)
+            okey (str): Key to access output (for ASR okey="input", MT okay="output".)
+            oaxis (int): Dimension to access output (for ASR oaxis=0, for MT oaxis=0.)
 
         """
 
@@ -109,12 +105,11 @@ else:
             iaxis=0,
             okey="output",
             oaxis=0,
-            subsampling_factor=1,
         ):
             self.att_vis_fn = att_vis_fn
-            self.data = copy.deepcopy(data)
-            self.data_dict = {k: v for k, v in copy.deepcopy(data)}
-            # key is utterance ID
+            self.data = copy.deepcopy(data)[::-1]
+            # NOTE: inputs to the model is sorted in the descending order
+            # However, data is sorted in the ascending order
             self.outdir = outdir
             self.converter = converter
             self.transform = transform
@@ -124,13 +119,12 @@ else:
             self.iaxis = iaxis
             self.okey = okey
             self.oaxis = oaxis
-            self.factor = subsampling_factor
             if not os.path.exists(self.outdir):
                 os.makedirs(self.outdir)
 
         def __call__(self, trainer):
             """Plot and save image file of att_ws matrix."""
-            att_ws, uttid_list = self.get_attention_weights()
+            att_ws = self.get_attention_weights()
             if isinstance(att_ws, list):  # multi-encoder case
                 num_encs = len(att_ws) - 1
                 # atts
@@ -138,13 +132,13 @@ else:
                     for idx, att_w in enumerate(att_ws[i]):
                         filename = "%s/%s.ep.{.updater.epoch}.att%d.png" % (
                             self.outdir,
-                            uttid_list[idx],
+                            self.data[idx][0],
                             i + 1,
                         )
-                        att_w = self.trim_attention_weight(uttid_list[idx], att_w)
+                        att_w = self.get_attention_weight(idx, att_w)
                         np_filename = "%s/%s.ep.{.updater.epoch}.att%d.npy" % (
                             self.outdir,
-                            uttid_list[idx],
+                            self.data[idx][0],
                             i + 1,
                         )
                         np.save(np_filename.format(trainer), att_w)
@@ -153,12 +147,12 @@ else:
                 for idx, att_w in enumerate(att_ws[num_encs]):
                     filename = "%s/%s.ep.{.updater.epoch}.han.png" % (
                         self.outdir,
-                        uttid_list[idx],
+                        self.data[idx][0],
                     )
-                    att_w = self.trim_attention_weight(uttid_list[idx], att_w)
+                    att_w = self.get_attention_weight(idx, att_w)
                     np_filename = "%s/%s.ep.{.updater.epoch}.han.npy" % (
                         self.outdir,
-                        uttid_list[idx],
+                        self.data[idx][0],
                     )
                     np.save(np_filename.format(trainer), att_w)
                     self._plot_and_save_attention(
@@ -168,45 +162,39 @@ else:
                 for idx, att_w in enumerate(att_ws):
                     filename = "%s/%s.ep.{.updater.epoch}.png" % (
                         self.outdir,
-                        uttid_list[idx],
+                        self.data[idx][0],
                     )
-                    att_w = self.trim_attention_weight(uttid_list[idx], att_w)
+                    att_w = self.get_attention_weight(idx, att_w)
                     np_filename = "%s/%s.ep.{.updater.epoch}.npy" % (
                         self.outdir,
-                        uttid_list[idx],
+                        self.data[idx][0],
                     )
                     np.save(np_filename.format(trainer), att_w)
                     self._plot_and_save_attention(att_w, filename.format(trainer))
 
         def log_attentions(self, logger, step):
             """Add image files of att_ws matrix to the tensorboard."""
-            att_ws, uttid_list = self.get_attention_weights()
+            att_ws = self.get_attention_weights()
             if isinstance(att_ws, list):  # multi-encoder case
                 num_encs = len(att_ws) - 1
                 # atts
                 for i in range(num_encs):
                     for idx, att_w in enumerate(att_ws[i]):
-                        att_w = self.trim_attention_weight(uttid_list[idx], att_w)
+                        att_w = self.get_attention_weight(idx, att_w)
                         plot = self.draw_attention_plot(att_w)
                         logger.add_figure(
-                            "%s_att%d" % (uttid_list[idx], i + 1),
-                            plot.gcf(),
-                            step,
+                            "%s_att%d" % (self.data[idx][0], i + 1), plot.gcf(), step
                         )
                 # han
                 for idx, att_w in enumerate(att_ws[num_encs]):
-                    att_w = self.trim_attention_weight(uttid_list[idx], att_w)
+                    att_w = self.get_attention_weight(idx, att_w)
                     plot = self.draw_han_plot(att_w)
-                    logger.add_figure(
-                        "%s_han" % (uttid_list[idx]),
-                        plot.gcf(),
-                        step,
-                    )
+                    logger.add_figure("%s_han" % (self.data[idx][0]), plot.gcf(), step)
             else:
                 for idx, att_w in enumerate(att_ws):
-                    att_w = self.trim_attention_weight(uttid_list[idx], att_w)
+                    att_w = self.get_attention_weight(idx, att_w)
                     plot = self.draw_attention_plot(att_w)
-                    logger.add_figure("%s" % (uttid_list[idx]), plot.gcf(), step)
+                    logger.add_figure("%s" % (self.data[idx][0]), plot.gcf(), step)
 
         def get_attention_weights(self):
             """Return attention weights.
@@ -219,26 +207,21 @@ else:
                     * chainer-> (B, Lmax, Tmax)
 
             """
-            return_batch, uttid_list = self.transform(self.data, return_uttid=True)
-            batch = self.converter([return_batch], self.device)
+            batch = self.converter([self.transform(self.data)], self.device)
             if isinstance(batch, tuple):
                 att_ws = self.att_vis_fn(*batch)
             else:
                 att_ws = self.att_vis_fn(**batch)
-            return att_ws, uttid_list
+            return att_ws
 
-        def trim_attention_weight(self, uttid, att_w):
+        def get_attention_weight(self, idx, att_w):
             """Transform attention matrix with regard to self.reverse."""
             if self.reverse:
-                enc_key, enc_axis = self.okey, self.oaxis
-                dec_key, dec_axis = self.ikey, self.iaxis
+                dec_len = int(self.data[idx][1][self.ikey][self.iaxis]["shape"][0])
+                enc_len = int(self.data[idx][1][self.okey][self.oaxis]["shape"][0])
             else:
-                enc_key, enc_axis = self.ikey, self.iaxis
-                dec_key, dec_axis = self.okey, self.oaxis
-            dec_len = int(self.data_dict[uttid][dec_key][dec_axis]["shape"][0])
-            enc_len = int(self.data_dict[uttid][enc_key][enc_axis]["shape"][0])
-            if self.factor > 1:
-                enc_len //= self.factor
+                dec_len = int(self.data[idx][1][self.okey][self.oaxis]["shape"][0])
+                enc_len = int(self.data[idx][1][self.ikey][self.iaxis]["shape"][0])
             if len(att_w.shape) == 3:
                 att_w = att_w[:, :dec_len, :enc_len]
             else:
@@ -340,14 +323,10 @@ else:
             device (int | torch.device): Device.
             reverse (bool): If True, input and output length are reversed.
             ikey (str): Key to access input
-                (for ASR/ST ikey="input", for MT ikey="output".)
-            iaxis (int): Dimension to access input
-                (for ASR/ST iaxis=0, for MT iaxis=1.)
-            okey (str): Key to access output
-                (for ASR/ST okey="input", MT okay="output".)
-            oaxis (int): Dimension to access output
-                (for ASR/ST oaxis=0, for MT oaxis=0.)
-            subsampling_factor (int): subsampling factor in encoder
+                (for ASR ikey="input", for MT ikey="output".)
+            iaxis (int): Dimension to access input (for ASR iaxis=0, for MT iaxis=1.)
+            okey (str): Key to access output (for ASR okey="input", MT okay="output".)
+            oaxis (int): Dimension to access output (for ASR oaxis=0, for MT oaxis=0.)
 
         """
 
@@ -364,12 +343,11 @@ else:
             iaxis=0,
             okey="output",
             oaxis=0,
-            subsampling_factor=1,
         ):
             self.ctc_vis_fn = ctc_vis_fn
-            self.data = copy.deepcopy(data)
-            self.data_dict = {k: v for k, v in copy.deepcopy(data)}
-            # key is utterance ID
+            self.data = copy.deepcopy(data)[::-1]
+            # NOTE: inputs to the model is sorted in the descending order
+            # However, data is sorted in the ascending order
             self.outdir = outdir
             self.converter = converter
             self.transform = transform
@@ -379,26 +357,24 @@ else:
             self.iaxis = iaxis
             self.okey = okey
             self.oaxis = oaxis
-            self.factor = subsampling_factor
             if not os.path.exists(self.outdir):
                 os.makedirs(self.outdir)
 
         def __call__(self, trainer):
             """Plot and save image file of ctc prob."""
-            ctc_probs, uttid_list = self.get_ctc_probs()
+            ctc_probs = self.get_ctc_probs()
             if isinstance(ctc_probs, list):  # multi-encoder case
                 num_encs = len(ctc_probs) - 1
                 for i in range(num_encs):
                     for idx, ctc_prob in enumerate(ctc_probs[i]):
                         filename = "%s/%s.ep.{.updater.epoch}.ctc%d.png" % (
                             self.outdir,
-                            uttid_list[idx],
+                            self.data[idx][0],
                             i + 1,
                         )
-                        ctc_prob = self.trim_ctc_prob(uttid_list[idx], ctc_prob)
                         np_filename = "%s/%s.ep.{.updater.epoch}.ctc%d.npy" % (
                             self.outdir,
-                            uttid_list[idx],
+                            self.data[idx][0],
                             i + 1,
                         )
                         np.save(np_filename.format(trainer), ctc_prob)
@@ -407,35 +383,30 @@ else:
                 for idx, ctc_prob in enumerate(ctc_probs):
                     filename = "%s/%s.ep.{.updater.epoch}.png" % (
                         self.outdir,
-                        uttid_list[idx],
+                        self.data[idx][0],
                     )
-                    ctc_prob = self.trim_ctc_prob(uttid_list[idx], ctc_prob)
                     np_filename = "%s/%s.ep.{.updater.epoch}.npy" % (
                         self.outdir,
-                        uttid_list[idx],
+                        self.data[idx][0],
                     )
                     np.save(np_filename.format(trainer), ctc_prob)
                     self._plot_and_save_ctc(ctc_prob, filename.format(trainer))
 
         def log_ctc_probs(self, logger, step):
             """Add image files of ctc probs to the tensorboard."""
-            ctc_probs, uttid_list = self.get_ctc_probs()
+            ctc_probs = self.get_ctc_probs()
             if isinstance(ctc_probs, list):  # multi-encoder case
                 num_encs = len(ctc_probs) - 1
                 for i in range(num_encs):
                     for idx, ctc_prob in enumerate(ctc_probs[i]):
-                        ctc_prob = self.trim_ctc_prob(uttid_list[idx], ctc_prob)
                         plot = self.draw_ctc_plot(ctc_prob)
                         logger.add_figure(
-                            "%s_ctc%d" % (uttid_list[idx], i + 1),
-                            plot.gcf(),
-                            step,
+                            "%s_att%d" % (self.data[idx][0], i + 1), plot.gcf(), step
                         )
             else:
                 for idx, ctc_prob in enumerate(ctc_probs):
-                    ctc_prob = self.trim_ctc_prob(uttid_list[idx], ctc_prob)
                     plot = self.draw_ctc_plot(ctc_prob)
-                    logger.add_figure("%s" % (uttid_list[idx]), plot.gcf(), step)
+                    logger.add_figure("%s" % (self.data[idx][0]), plot.gcf(), step)
 
         def get_ctc_probs(self):
             """Return CTC probs.
@@ -445,21 +416,12 @@ else:
                     differ from backend. (B, Tmax, vocab).
 
             """
-            return_batch, uttid_list = self.transform(self.data, return_uttid=True)
-            batch = self.converter([return_batch], self.device)
+            batch = self.converter([self.transform(self.data)], self.device)
             if isinstance(batch, tuple):
                 probs = self.ctc_vis_fn(*batch)
             else:
                 probs = self.ctc_vis_fn(**batch)
-            return probs, uttid_list
-
-        def trim_ctc_prob(self, uttid, prob):
-            """Trim CTC posteriors accoding to input lengths."""
-            enc_len = int(self.data_dict[uttid][self.ikey][self.iaxis]["shape"][0])
-            if self.factor > 1:
-                enc_len //= self.factor
-            prob = prob[:enc_len]
-            return prob
+            return probs
 
         def draw_ctc_plot(self, ctc_prob):
             """Plot the ctc_prob matrix.

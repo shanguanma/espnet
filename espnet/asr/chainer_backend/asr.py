@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
+
 # Copyright 2017 Johns Hopkins University (Shinji Watanabe)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
-"""Training/decoding definition for the speech recognition task."""
 
 import json
 import logging
@@ -91,7 +92,6 @@ def train(args):
     model_class = dynamic_import(args.model_module)
     model = model_class(idim, odim, args, flag_return=False)
     assert isinstance(model, ASRInterface)
-    total_subsampling_factor = model.get_total_subsampling_factor()
 
     # write model config
     if not os.path.exists(args.outdir):
@@ -355,7 +355,6 @@ def train(args):
             converter=converter,
             transform=load_cv,
             device=gpu_id,
-            subsampling_factor=total_subsampling_factor,
         )
         trainer.extend(att_reporter, trigger=(1, "epoch"))
     else:

@@ -1,9 +1,15 @@
-"""Time warp module."""
+from distutils.version import LooseVersion
+
 import torch
 
 from espnet.nets.pytorch_backend.nets_utils import pad_list
 
-DEFAULT_TIME_WARP_MODE = "bicubic"
+
+if LooseVersion(torch.__version__) >= LooseVersion("1.1"):
+    DEFAULT_TIME_WARP_MODE = "bicubic"
+else:
+    # pytorch1.0 doesn't implement bicubic
+    DEFAULT_TIME_WARP_MODE = "bilinear"
 
 
 def time_warp(x: torch.Tensor, window: int = 80, mode: str = DEFAULT_TIME_WARP_MODE):

@@ -274,7 +274,6 @@ class Encoder(chainer.Chain):
                         ),
                     )
                     logging.info("Use CNN-VGG + " + typ.upper() + " for encoder")
-                self.conv_subsampling_factor = 4
             else:
                 if etype[-1] == "p":
                     self.enc = chainer.Sequential(
@@ -288,7 +287,6 @@ class Encoder(chainer.Chain):
                         RNN(idim, elayers, eunits, eprojs, dropout, typ=typ)
                     )
                     logging.info(typ.upper() + " without projection for encoder")
-                self.conv_subsampling_factor = 1
 
     def __call__(self, xs, ilens):
         """Encoder forward.

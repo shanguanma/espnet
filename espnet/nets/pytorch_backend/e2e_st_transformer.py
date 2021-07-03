@@ -6,7 +6,6 @@
 from argparse import Namespace
 import logging
 import math
-import numpy
 
 import torch
 
@@ -58,10 +57,6 @@ class E2E(STInterface, torch.nn.Module):
     def attention_plot_class(self):
         """Return PlotAttentionReport."""
         return PlotAttentionReport
-
-    def get_total_subsampling_factor(self):
-        """Get total subsampling factor."""
-        return self.encoder.conv_subsampling_factor * int(numpy.prod(self.subsample))
 
     def __init__(self, idim, odim, args, ignore_id=-1):
         """Construct an E2E object.

@@ -2,7 +2,7 @@ from distutils.version import LooseVersion
 from typing import Optional
 from typing import Tuple
 from typing import Union
-
+import logging
 import torch
 from torch_complex.tensor import ComplexTensor
 from typeguard import check_argument_types
@@ -81,6 +81,10 @@ class Stft(torch.nn.Module, InversibleInterface):
             )
         else:
             window = None
+        #logging.info(f"in the Stft.py forward function, window is {window}")
+        logging.info(f"int the Stft.py forward function, input shape is {input.shape} and input is {input}")
+        #if input.shape != torch.Size([1,0]): 
+           
         output = torch.stft(
             input,
             n_fft=self.n_fft,
@@ -91,16 +95,19 @@ class Stft(torch.nn.Module, InversibleInterface):
             normalized=self.normalized,
             onesided=self.onesided,
         )
+        
+        #logging.info(f"in the Stft.py forward function, output is {output} and its shape is{output.shape}")
         # output: (Batch, Freq, Frames, 2=real_imag)
         # -> (Batch, Frames, Freq, 2=real_imag)
         output = output.transpose(1, 2)
+        #logging.info(f"in the Stft.py forward function, after transpose, output is {output} and its shape is {output.shape}")
         if multi_channel:
             # output: (Batch * Channel, Frames, Freq, 2=real_imag)
             # -> (Batch, Frame, Channel, Freq, 2=real_imag)
             output = output.view(bs, -1, output.size(1), output.size(2), 2).transpose(
                 1, 2
             )
-
+        #logging.info(f"in the Stft.py forward function, after multi_channel  output is {output} and its shape is {output.shape}")
         if ilens is not None:
             if self.center:
                 pad = self.win_length // 2
@@ -110,7 +117,7 @@ class Stft(torch.nn.Module, InversibleInterface):
             output.masked_fill_(make_pad_mask(olens, output, 1), 0.0)
         else:
             olens = None
-
+        #logging.info(f"in the Stft.py forward function, olens is {olens} and its shape is {olens.shape}" )
         return output, olens
 
     def inverse(
@@ -141,14 +148,6 @@ class Stft(torch.nn.Module, InversibleInterface):
                 )
             istft = torchaudio.functional.istft
 
-        if self.window is not None:
-            window_func = getattr(torch, f"{self.window}_window")
-            window = window_func(
-                self.win_length, dtype=input.dtype, device=input.device
-            )
-        else:
-            window = None
-
         if isinstance(input, ComplexTensor):
             input = torch.stack([input.real, input.imag], dim=-1)
         assert input.shape[-1] == 2
@@ -159,7 +158,6 @@ class Stft(torch.nn.Module, InversibleInterface):
             n_fft=self.n_fft,
             hop_length=self.hop_length,
             win_length=self.win_length,
-            window=window,
             center=self.center,
             normalized=self.normalized,
             onesided=self.onesided,

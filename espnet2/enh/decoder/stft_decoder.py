@@ -6,15 +6,15 @@ from espnet2.layers.stft import Stft
 
 
 class STFTDecoder(AbsDecoder):
-    """STFT decoder for speech enhancement and separation"""
+    """STFT decoder for speech enhancement and separation """
 
     def __init__(
         self,
         n_fft: int = 512,
         win_length: int = None,
-        hop_length: int = 128,
+        hop_length: int = 256,
         window="hann",
-        center: bool = True,
+        center: bool = False,
         normalized: bool = False,
         onesided: bool = True,
     ):
@@ -31,7 +31,6 @@ class STFTDecoder(AbsDecoder):
 
     def forward(self, input: ComplexTensor, ilens: torch.Tensor):
         """Forward.
-
         Args:
             input (ComplexTensor): spectrum [Batch, T, F]
             ilens (torch.Tensor): input lengths [Batch]
